@@ -1,37 +1,15 @@
-# ProSmith
-This is a cloned version of the ProSmith repo that was refined to include setting up ProSmith on the SCC. There are a few additional scripts for properly formatting data and submitting batch jobs on the scc. 
-
-[Original ProSmith repo](https://github.com/AlexanderKroll/ProSmith)\
-[Methods paper describing the ProSmith architecture](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1012100#sec002)
-
-
-## Downloading data folder
-The original repo had their code and data available for [download from Zenodo](https://doi.org/10.5281/zenodo.10986299).
-Afterwards, this repository should have the following strcuture:
-
-    ├── code
-    ├── data   
-    ├── LICENSE.md     
-    └── README.md
-
-The relevant data for M2OR is in my directory: /projectnb/depaqlab/emily/m2or/pairs.csv \
-It can also be downloaded from the [M2OR website](https://m2or.chemsensim.fr/)
+# Olfactory Foundation Models
+This is a repository for the paper Multimodal Biochemical Foundation Models Improve Odorant Receptor Pair Prediction (McConachie et. al. 2025)
 
 ## Install
-```
-conda env create -f environment.yml
-conda activate prosmith
-pip install -r requirements.txt
-```
-If you run into issues with torch,  make sure you didn't install the cpu only version:
-```
-conda remove pytorch torchvision torchaudio cpuonly -n prosmith
-conda install pytorch=2.0.0 torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+There are two separate environments for preprocessing and model running.
 
 ```
+conda env create -f ofm_preprocess.yml
+conda env create -f ofm.yml
+```
 
-
-## How to train and evaluate a model
+## How to generate all embeddings
 ### (a) Data preparation
 First, you need a training, validation, and test set as csv files. Every csv file should be comma-separated and have the following columns:\
 -Protein sequence: contains the protein amino acid sequences of proteins\

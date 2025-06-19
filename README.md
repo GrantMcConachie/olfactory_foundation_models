@@ -9,6 +9,11 @@ conda env create -f ofm_preprocess.yml
 conda env create -f ofm.yml
 ```
 
+## Install datasets
+The datasets used in this paper can be downloaded here: https://zenodo.org/records/15699522
+
+These files also contain pre-generated embeddings, the splits used, and a pretrained MPP model. Please unzip and put the data/ and BindingDB/ folders in the top level directory.
+
 ## How to generate all embeddings
 All embeddings are already provided in the data/ folder, but if you would like to regenerate them you can run the following command.
 

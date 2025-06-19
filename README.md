@@ -29,7 +29,7 @@ python model/MO/molecule_model.py # MO model
 python model/MPL/combo_model.py # MPL model
 ```
 
-These will plot and tabulate results in TODO.
+These will plot and tabulate results in **TODO**.
 
 ### MPP model
 This model is a little more nuanced to run as it is an adaptation of the ProSmith model https://github.com/AlexanderKroll/ProSmith.

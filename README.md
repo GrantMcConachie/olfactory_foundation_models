@@ -25,6 +25,7 @@ The MO and MPL models can be run with the following command.
 ```
 conda deactivate
 conda activate ofm
+pip install -e .
 python model/MO/molecule_model.py # MO model
 python model/MPL/combo_model.py # MPL model
 ```

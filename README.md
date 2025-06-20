@@ -11,7 +11,7 @@ conda env create -f ofm.yml
 ```
 
 ### Datasets
-The datasets used in this paper can be downloaded here: https://zenodo.org/records/15699522
+The datasets used in this paper can be downloaded here: https://zenodo.org/records/15708071
 
 These files also contain pre-generated embeddings, the splits used, and a pretrained MPP model. Please unzip and put the data/ and BindingDB/ folders in the top level directory.
 

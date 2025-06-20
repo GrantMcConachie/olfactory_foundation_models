@@ -1,9 +1,8 @@
 ## project specific
-BindingDB/
-data/
 results/
 batch_GB.sh
 batch_transformer.sh
+data/
 
 # data
 BindingDB/

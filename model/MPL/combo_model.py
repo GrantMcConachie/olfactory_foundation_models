@@ -17,78 +17,7 @@ from sklearn.metrics import matthews_corrcoef
 from sklearn.linear_model import Ridge, Lasso, LogisticRegression
 from sklearn.model_selection import ShuffleSplit, GridSearchCV, KFold
 
-import esm
 import torch
-
-import model.molecule_model as r
-
-
-def generate_embeddings(dataset, mol_emb_type=('base', 'CATS')):
-    """
-    generates molecular and protein embeddings
-    """
-    # molecular embeddings
-    mol_embs = r.generate_embeddings(dataset, mol_emb_type)
-
-    # protein embeddings
-    # check if saved
-    parent_dir = os.path.dirname(dataset)
-    save_path = os.path.join(parent_dir, 'featurized_proteins', 'prots.pkl')
-    if os.path.isfile(save_path):
-        return (mol_embs, pkl.load(open(save_path, 'rb')))
-
-    # get all proteins
-    prots = []
-    for i, row in pd.read_csv(dataset).iterrows():
-        prots.append((row['Protein sequence'][:5], row['Protein sequence']))
-
-    prots = list(set(prots))
-
-    # load esm model
-    model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()  # not prosmith
-    batch_converter = alphabet.get_batch_converter()
-    model.eval()
-
-    # generated protein embeddings
-    _, _, batch_tokens = batch_converter(prots)
-    batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
-
-    # chunking into size 10 batches for cpu
-    split_batch_tokens = torch.tensor_split(
-        batch_tokens,
-        len(batch_tokens) // 2,
-        dim=0
-    )
-    split_batch_lens = torch.tensor_split(
-        batch_lens,
-        len(batch_tokens) // 2,
-    )
-
-    # Extract per-residue representations
-    for (tok, lens) in zip(split_batch_tokens, split_batch_lens):
-        with torch.no_grad():
-            results = model(
-                tok,
-                repr_layers=[33],
-                return_contacts=True
-            )
-        token_representations = results["representations"][33]
-
-    # Generate per-sequence representations via averaging
-    sequence_representations = []
-    for i, tokens_len in enumerate(batch_lens):
-        sequence_representations.append(
-            token_representations[i, 1:tokens_len - 1].mean(0)
-        )
-
-    # putting representations into a dict and saving
-    feat_dict = {}
-    for p, rep in zip(prots, sequence_representations):
-        feat_dict[p[1]] = rep
-
-    pkl.dump(feat_dict, open(save_path, "wb"))
-
-    return (mol_embs, feat_dict)
 
 
 def save_splits(dataset, df, train_index, test_index, split_num, type):

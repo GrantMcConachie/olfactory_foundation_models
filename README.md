@@ -2,6 +2,7 @@
 This is a repository for the paper Multimodal Biochemical Foundation Models Improve Odorant Receptor Pair Prediction (McConachie et. al. 2025)
 
 ## Install
+### Environments
 There are two separate environments for preprocessing and model running.
 
 ```
@@ -9,7 +10,7 @@ conda env create -f ofm_preprocess.yml
 conda env create -f ofm.yml
 ```
 
-## Install datasets
+### Datasets
 The datasets used in this paper can be downloaded here: https://zenodo.org/records/15699522
 
 These files also contain pre-generated embeddings, the splits used, and a pretrained MPP model. Please unzip and put the data/ and BindingDB/ folders in the top level directory.

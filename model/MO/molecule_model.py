@@ -16,33 +16,7 @@ from sklearn.model_selection import GridSearchCV, ShuffleSplit, KFold, Stratifie
 
 import deepchem as dc
 
-
-def get_mol_embedding_types():
-    """
-    Returns all embedding types in molfeat
-    """
-    transformers = [
-        ('trans', 'Roberta-Zinc480M-102M'),
-        ('trans', 'GPT2-Zinc480M-87M'),
-        ('trans', 'ChemGPT-19M'),
-        ('trans', 'MolT5'),
-        ('trans', 'ChemBERTa-77M-MTR'),
-    ]
-    gnns = [
-        ('graph', 'gin_supervised_infomax'),
-        ('graph', 'gin_supervised_edgepred'),
-        ('graph', 'gin_supervised_contextpred')
-    ]
-    basic_fingerprints = [
-        ('base', 'CATS'),
-        ('base', 'MordredDescriptors'),
-        ('base', 'Pharmacophore2D'),
-        ('base', 'RDKitDescriptors2D'),
-        ('base', 'ScaffoldKeyCalculator')
-    ]
-    ecfp = [('ecfp', 'ecfp')]
-
-    return basic_fingerprints + ecfp + transformers + gnns
+from preprocess.generate_embeddings import get_mol_embedding_types
 
 
 def get_mol_embedding(dataset, emb_type):
@@ -95,7 +69,7 @@ def run_lr(dataset, embs, regressor='r'):
         }
 
         # defining regressor
-        if dataset == 'data/M2OR/pairs_ec50.csv':  # binary data
+        if dataset == 'data/M2OR/raw/pairs_ec50.csv':  # binary data
             reg = LogisticRegression()
             param_grid = {
                 'C': np.logspace(-10, 10, num=21)
@@ -134,7 +108,7 @@ def run_lr(dataset, embs, regressor='r'):
             best_model.fit(embeddings[train_index], output[train_index])
 
             # change scoring based on dataset
-            if dataset == 'data/M2OR/pairs_ec50.csv':
+            if dataset == 'data/M2OR/raw/pairs_ec50.csv':
                 preds = best_model.predict(embeddings[test_index])
                 score = matthews_corrcoef(output[test_index], preds)
                 random_shuf_scores.append(score)
@@ -144,7 +118,7 @@ def run_lr(dataset, embs, regressor='r'):
                 random_shuf_scores.append(r2)
 
         # 5-fold cross val for scaffold splitting
-        if dataset == 'data/M2OR/pairs_ec50.csv':
+        if dataset == 'data/M2OR/raw/pairs_ec50.csv':
             # no scaffold for M2OR
             scaf_shuf_scores = np.zeros((5,))
 
@@ -276,8 +250,15 @@ def tabulate(emb_scores, dataset, regressor):
     Saves data to a csv
     """
     # create empty dataframe and a place for it to go
-    path = os.path.dirname(dataset).replace("data/", "results/")
-    path += "/molecule_emb_only.csv"
+    path = os.path.dirname(os.path.dirname(dataset)).replace("data/", "results/")
+    path = os.path.join(path, 'MO', 'molecule_emb_only.csv')
+    
+    # create path
+    try:
+        os.mkdir(os.path.dirname(path))
+    except:
+        pass
+
     df = pd.DataFrame(
         columns=[
             'embedding',
@@ -348,8 +329,8 @@ def main(datasets, regressor='r'):
 
 if __name__ == '__main__':
     datasets = [
-        # 'data/M2OR/raw/pairs_ec50.csv',
+        'data/M2OR/raw/pairs_ec50.csv',
         # 'data/HC/raw/hc_with_prot_seq_z.csv',
-        'data/CC/raw/CC_reformat_z.csv'
+        # 'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

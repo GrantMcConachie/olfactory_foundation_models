@@ -226,8 +226,8 @@ def create_empty_path(path):
 
 if __name__ == '__main__':
     datasets = [
-        'data/M2OR/raw/pairs_ec50.csv',
-        # 'data/HC/raw/hc_with_prot_seq_z.csv',
+        # 'data/M2OR/raw/pairs_ec50.csv',
+        'data/HC/raw/hc_with_prot_seq_z.csv',
         # 'data/CC/raw/CC_reformat_z.csv'
     ]
 
@@ -238,5 +238,5 @@ if __name__ == '__main__':
         calculate_protein_embeddings(dataset)
 
         # generating molecular embeddings
-        for emb_type in tqdm(emb_types, desc=f'{dataset}'):
-            generate_mol_embeddings(dataset, emb_type)
+        # for emb_type in tqdm(emb_types, desc=f'{dataset}'):
+        #     generate_mol_embeddings(dataset, emb_type)

@@ -21,7 +21,7 @@ from preprocess.generate_embeddings import get_mol_embedding_types
 
 def get_mol_embedding(dataset, emb_type):
     """
-    Loads embedding 'data/CC/raw/CC_reformat_z.csv'
+    Loads embedding
     """
     # embedding path
     dir = os.path.dirname(os.path.dirname(dataset))
@@ -70,7 +70,7 @@ def run_lr(dataset, embs, regressor='r'):
 
         # defining regressor
         if dataset == 'data/M2OR/raw/pairs_ec50.csv':  # binary data
-            reg = LogisticRegression()
+            reg = LogisticRegression(max_iter=1000)
             param_grid = {
                 'C': np.logspace(-10, 10, num=21)
             }
@@ -88,11 +88,11 @@ def run_lr(dataset, embs, regressor='r'):
             splits = rs.split(embeddings, output)
 
         elif regressor == 'r':
-            reg = Ridge()
+            reg = Ridge(max_iter=1000)
             splits = rs.split(output)
 
         elif regressor == 'l':
-            reg = Lasso()
+            reg = Lasso(max_iter=1000)
             splits = rs.split(output)
 
         # 5-fold cross val for random shuffling
@@ -329,8 +329,8 @@ def main(datasets, regressor='r'):
 
 if __name__ == '__main__':
     datasets = [
-        'data/M2OR/raw/pairs_ec50.csv',
-        # 'data/HC/raw/hc_with_prot_seq_z.csv',
+        # 'data/M2OR/raw/pairs_ec50.csv',
+        'data/HC/raw/hc_with_prot_seq_z.csv',
         # 'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

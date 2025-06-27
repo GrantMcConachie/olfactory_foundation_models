@@ -3,11 +3,17 @@ This is a repository for the paper Multimodal Biochemical Foundation Models Impr
 
 ## Install
 ### Environments
-There are two separate environments for preprocessing and model running.
+There are two separate environments to run models: one for preprocessing, MO, and MPL models and one for the MPP model.
 
 ```
-conda env create -f ofm_preprocess.yml
-conda env create -f ofm.yml
+conda env create -f ofm.yml  # preprocessing, MO, and MPL models
+conda env create -f ofm_MPP.yml  # MPP model
+```
+
+There is an additional environment for generating CD-HIT splits below. This environment is not required to setup if data is downloaded from the zenodo link below.
+
+```
+TODO
 ```
 
 ### Datasets
@@ -19,8 +25,16 @@ These files also contain pre-generated embeddings, the splits used, and a pretra
 All embeddings are already provided in the data/ folder, but if you would like to regenerate them you can run the following command.
 
 ```
-conda activate ofm_preprocess
+conda activate ofm
+pip install -e .
 python preprocess/generate_embeddings.py
+```
+
+## How to generate CD-HIT splits
+These splits are also already provided in the data/ folder, but if you would like to regenerate them you can run the following command.
+
+```
+TODO
 ```
 
 ## Running the models

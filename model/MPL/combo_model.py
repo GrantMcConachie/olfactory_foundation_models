@@ -19,13 +19,30 @@ from sklearn.model_selection import ShuffleSplit, GridSearchCV, KFold
 
 import torch
 
+import model.MO.molecule_model as mm
+from preprocess.generate_embeddings import get_mol_embedding_types
+
+
+def get_prot_embedding(dataset):
+    """
+    loads the protein embeddings
+    """
+    # embedding path
+    dir = os.path.dirname(os.path.dirname(dataset))
+    dir = os.path.join(dir, 'embeddings', 'featurized_proteins', f'prots.pt')
+
+    return torch.load(dir)
+
 
 def save_splits(dataset, df, train_index, test_index, split_num, type):
     """
-    Saves the splits as csv files
+    Saves the splits as csv files. Creates a validation csv as well for
+    MPP model. 0.2 of train for M2OR and CC, and 0.1 of HC because the
+    dataset is smaller. TODO: use round()
     """
     # creating save file
-    save_fp = os.path.dirname(dataset) + f'/{type}_splits/'
+    save_fp = os.path.dirname(os.path.dirname(dataset))
+    save_fp = os.path.join(save_fp, f'{type}_splits')
     if not os.path.exists(save_fp):
         os.makedirs(save_fp)
 
@@ -41,8 +58,9 @@ def cdhit_split(df, x, y, dataset):
     splits data based on protein similarity
     """
     # paths of results from cdhit
-    cluster_path = os.path.dirname(dataset) + '/cdhit/cd_out.clstr'
-    prot_path = os.path.dirname(dataset) + '/cdhit/cd.fasta'
+    par_dir = os.path.dirname(os.path.dirname(dataset))
+    cluster_path = os.path.join(par_dir, 'cdhit', 'cd_out.clstr')
+    prot_path = os.path.join(par_dir, 'cdhit', 'cd.fasta')
 
     # get all proteins and their labels
     seq = {}
@@ -85,7 +103,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
     x, y = [], []
     for _, row in df.iterrows():
         mol_feat = mol_emb[row['SMILES']]
-        prot_feat = prot_emb[row['Protein sequence']]
+        prot_feat = prot_emb[row['Protein sequence']].mean(0)
         combo = np.concatenate([mol_feat, prot_feat])
         x.append(combo)
         y.append(row['output'])
@@ -100,15 +118,15 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
     }
 
     # defining regressor
-    if dataset == 'data/M2OR/pairs_ec50.csv':
-        reg = LogisticRegression()
+    if dataset == 'data/M2OR/raw/pairs_ec50.csv':
+        reg = LogisticRegression(max_iter=1000)
         param_grid = {
             'C': np.logspace(-10, 10, num=21)
         }
     elif regressor == 'r':
-        reg = Ridge()
+        reg = Ridge(max_iter=1000)
     elif regressor == 'l':
-        reg = Lasso()
+        reg = Lasso(max_iter=1000)
 
     # random splits of the data
     rs = ShuffleSplit(n_splits=5, test_size=0.2, random_state=seed)
@@ -117,14 +135,15 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf = GridSearchCV(
             reg,
             param_grid=param_grid,
+            n_jobs=-1
         )
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
         best_model.fit(x[train_index], y[train_index])
-        save_splits(dataset, df, train_index, test_index, i, 'rand')
+        # save_splits(dataset, df, train_index, test_index, i, 'rand')
 
         # using mcc if m2or
-        if dataset == 'data/M2OR/pairs_ec50.csv':
+        if dataset == 'data/M2OR/raw/pairs_ec50.csv':
             preds = best_model.predict(x[test_index])
             score = matthews_corrcoef(y[test_index], preds)
 
@@ -140,14 +159,15 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf = GridSearchCV(
             reg,
             param_grid=param_grid,
+            n_jobs=-1
         )
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
         best_model.fit(x[train_index], y[train_index])
-        save_splits(dataset, df, train_index, test_index, i, 'cdhit')
+        # save_splits(dataset, df, train_index, test_index, i, 'cdhit')
 
         # using mcc if m2or
-        if dataset == 'data/M2OR/pairs_ec50.csv':
+        if dataset == 'data/M2OR/raw/pairs_ec50.csv':
             preds = best_model.predict(x[test_index])
             score_cd = matthews_corrcoef(y[test_index], preds)
 
@@ -174,6 +194,7 @@ def plot_results(emb_scores, dataset, ylabel='r2'):
             emb_names_NN.append(i[0][1])
             print(f'{i[0][1]} shuf: mean {np.mean(i[1])} std: {np.std(i[1])}')
             print(f'{i[0][1]} cdhit: mean {np.mean(i[2])} std: {np.std(i[2])}')
+            print('\n')
 
         else:
             shuf_scores_P.append(i[1])
@@ -181,6 +202,7 @@ def plot_results(emb_scores, dataset, ylabel='r2'):
             emb_names_P.append(i[0][1])
             print(f'{i[0][1]} shuf: mean {np.mean(i[1])} std: {np.std(i[1])}')
             print(f'{i[0][1]} cdhit: mean {np.mean(i[2])} std: {np.std(i[2])}')
+            print('\n')
 
     # plotting
     for j, (nn, p) in enumerate([
@@ -232,40 +254,96 @@ def plot_results(emb_scores, dataset, ylabel='r2'):
         plt.tight_layout()
 
 
-def main(dataset):
-    emb_types_mol = r.get_embedding_types()
+def tabulate(emb_score, dataset, regressor):
+    """
+    saves data to a csv
+    """
+    # create empty dataframe and a place for it to go
+    path = os.path.dirname(os.path.dirname(dataset)).replace("data/", "results/")
+    path = os.path.join(path, 'MPL', 'combo_model.csv')
+    
+    # create path
+    try:
+        os.mkdir(os.path.dirname(path))
+    except:
+        pass
+
+    df = pd.DataFrame(
+        columns=[
+            'embedding',
+            'shuf_mean',
+            'cdhit_mean',
+            'shuf1',
+            'shuf2',
+            'shuf3',
+            'shuf4',
+            'shuf5',
+            'scaf1',
+            'scaf2',
+            'scaf3',
+            'scaf4',
+            'scaf5',
+            'receptor',
+            'regressor'
+        ]
+    )
+
+    # loop through scores
+    for score in emb_score:
+        emb = score[0][1]
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame({
+                    'embedding': [emb],
+                    'shuf_mean': [np.mean(score[1])],
+                    'cdhit_mean': [np.mean(score[2])],
+                    'shuf1': [score[1][0]],
+                    'shuf2': [score[1][1]],
+                    'shuf3': [score[1][2]],
+                    'shuf4': [score[1][3]],
+                    'shuf5': [score[1][4]],
+                    'cdhit1': [score[2][0]],
+                    'cdhit2': [score[2][1]],
+                    'cdhit3': [score[2][2]],
+                    'cdhit4': [score[2][3]],
+                    'cdhit5': [score[2][4]],
+                    'regressor': regressor
+                })
+            ],
+            ignore_index=True
+        )
+
+    # save
+    df.to_csv(path, index=False)
+
+
+def main(dataset, regressor='r'):
+    emb_types_mol = get_mol_embedding_types()
     for dataset in datasets:
         emb_scores = []
         for emb_type in tqdm(emb_types_mol):
-            mol_emb, prot_emb = generate_embeddings(dataset, emb_type)
-            mol_emb = r.clean_embeddings(mol_emb)
-
-            # zscore mordred
-            if emb_type == ('base', 'MordredDescriptors'):
-                cleaned = np.array(list(mol_emb.values()))
-                cleaned_z = zscore(cleaned)
-                for i, (key, value) in enumerate(mol_emb.items()):
-                    mol_emb[key] = cleaned_z[i]
-
-                mol_emb = r.clean_embeddings(mol_emb)
-
-            mol_emb = r.reduce_embs(mol_emb)  # idk about this
+            mol_emb = mm.get_mol_embedding(dataset, emb_type)
+            prot_emb = get_prot_embedding(dataset)
+            mol_emb = mm.reduce_embs(mol_emb)  # idk about this
             shuf_scores, cdhit_scores = run_regression(
                 dataset,
                 mol_emb,
                 prot_emb,
-                regressor='r'
+                regressor=regressor
             )
             emb_scores.append((emb_type, shuf_scores, cdhit_scores))
+        tabulate(emb_scores, dataset, regressor)
         plot_results(emb_scores, dataset)
+        
+
     plt.show()
 
 
 if __name__ == '__main__':
     datasets = [
-        # 'data/Davis/davis_z.csv',
-        # 'data/HallemCarlson/hc_with_prot_seq_z.csv',
-        # 'data/M2OR/pairs_ec50.csv',
-        'data/CareyCarlson/CC_reformat_z.csv',
+        # 'data/M2OR/raw/pairs_ec50.csv',
+        # 'data/HC/raw/hc_with_prot_seq_z.csv',
+        'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

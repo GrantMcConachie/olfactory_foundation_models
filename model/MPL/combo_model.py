@@ -34,23 +34,32 @@ def get_prot_embedding(dataset):
     return torch.load(dir)
 
 
-def save_splits(dataset, df, train_index, test_index, split_num, type):
+def save_splits(dataset, df, train_index, test_index, split_num, split_type):
     """
     Saves the splits as csv files. Creates a validation csv as well for
     MPP model. 0.2 of train for M2OR and CC, and 0.1 of HC because the
-    dataset is smaller. TODO: use round()
+    dataset is smaller.
     """
     # creating save file
     save_fp = os.path.dirname(os.path.dirname(dataset))
-    save_fp = os.path.join(save_fp, f'{type}_splits')
+    save_fp = os.path.join(save_fp, f'{split_type}_splits', f'{split_type}_split_{split_num+1}')
     if not os.path.exists(save_fp):
         os.makedirs(save_fp)
 
     # saving dfs
     train_df = df.iloc[train_index]
     test_df = df.iloc[test_index]
-    train_df.to_csv(save_fp + f'train_{split_num}.csv', index=False)
-    test_df.to_csv(save_fp + f'test_{split_num}.csv', index=False)
+
+    if dataset == 'data/HC/raw/hc_with_prot_seq_z.csv':
+        val_percent = round(len(train_df) * 0.1)
+        val_df = train_df[-val_percent:]
+    else:
+        val_percent = int(np.ceil(len(train_df) * 0.2))
+        val_df = train_df[-val_percent:]
+    
+    train_df.to_csv(os.path.join(save_fp, 'train_df.csv'), index=False)
+    test_df.to_csv(os.path.join(save_fp, 'test_df.csv'), index=False)
+    val_df.to_csv(os.path.join(save_fp, 'val_df.csv'), index=False)
 
 
 def cdhit_split(df, x, y, dataset):
@@ -140,7 +149,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
         best_model.fit(x[train_index], y[train_index])
-        # save_splits(dataset, df, train_index, test_index, i, 'rand')
+        save_splits(dataset, df, train_index, test_index, i, 'rand')
 
         # using mcc if m2or
         if dataset == 'data/M2OR/raw/pairs_ec50.csv':
@@ -164,7 +173,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
         best_model.fit(x[train_index], y[train_index])
-        # save_splits(dataset, df, train_index, test_index, i, 'cdhit')
+        save_splits(dataset, df, train_index, test_index, i, 'cdhit')
 
         # using mcc if m2or
         if dataset == 'data/M2OR/raw/pairs_ec50.csv':
@@ -343,7 +352,7 @@ def main(dataset, regressor='r'):
 if __name__ == '__main__':
     datasets = [
         # 'data/M2OR/raw/pairs_ec50.csv',
-        # 'data/HC/raw/hc_with_prot_seq_z.csv',
-        'data/CC/raw/CC_reformat_z.csv'
+        'data/HC/raw/hc_with_prot_seq_z.csv',
+        # 'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

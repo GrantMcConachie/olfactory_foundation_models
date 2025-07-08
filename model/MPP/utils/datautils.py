@@ -10,7 +10,7 @@ import pickle as pkl
 from itertools import accumulate
 import random
 from time import time
-from utils.train_utils import *
+from model.MPP.utils.train_utils import *
 
 
 class SMILESProteinDataset(Dataset):

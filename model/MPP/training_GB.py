@@ -1,3 +1,7 @@
+"""
+Adapted from https://github.com/AlexanderKroll/ProSmith
+"""
+
 import os
 from os.path import join
 import shutil
@@ -24,12 +28,12 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 
-from utils.modules import (
+from model.MPP.utils.modules import (
     MM_TN,
     MM_TNConfig)
 
-from utils.datautils import SMILESProteinDataset
-from utils.train_utils import *
+from model.MPP.utils.datautils import SMILESProteinDataset
+from model.MPP.utils.train_utils import *
 
 
 #### added this, fix the way argparse handles bool inputs: 

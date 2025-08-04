@@ -3,6 +3,7 @@ results/
 batch_GB.sh
 batch_transformer.sh
 data/
+inference/
 
 # data
 BindingDB/

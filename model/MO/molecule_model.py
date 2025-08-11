@@ -329,8 +329,8 @@ def main(datasets, regressor='r'):
 
 if __name__ == '__main__':
     datasets = [
-        # 'data/M2OR/raw/pairs_ec50.csv',
-        'data/HC/raw/hc_with_prot_seq_z.csv',
+        'data/M2OR/raw/pairs_ec50.csv',
+        # 'data/HC/raw/hc_with_prot_seq_z.csv',
         # 'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

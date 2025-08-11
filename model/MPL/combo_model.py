@@ -57,7 +57,7 @@ def save_splits(dataset, df, train_index, test_index, split_num, split_type):
         val_percent = int(np.ceil(len(train_df) * 0.2))
         val_df = train_df[-val_percent:]
     
-    train_df.to_csv(os.path.join(save_fp, 'train_df.csv'), index=False)
+    train_df[:-val_percent].to_csv(os.path.join(save_fp, 'train_df.csv'), index=False)
     test_df.to_csv(os.path.join(save_fp, 'test_df.csv'), index=False)
     val_df.to_csv(os.path.join(save_fp, 'val_df.csv'), index=False)
 
@@ -144,7 +144,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf = GridSearchCV(
             reg,
             param_grid=param_grid,
-            n_jobs=-1
+            # n_jobs=-1
         )
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
@@ -168,7 +168,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf = GridSearchCV(
             reg,
             param_grid=param_grid,
-            n_jobs=-1
+            # n_jobs=-1
         )
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
@@ -352,7 +352,7 @@ def main(dataset, regressor='r'):
 if __name__ == '__main__':
     datasets = [
         # 'data/M2OR/raw/pairs_ec50.csv',
-        'data/HC/raw/hc_with_prot_seq_z.csv',
-        # 'data/CC/raw/CC_reformat_z.csv'
+        # 'data/HC/raw/hc_with_prot_seq_z.csv',
+        'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

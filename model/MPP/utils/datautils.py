@@ -22,12 +22,14 @@ class SMILESProteinDataset(Dataset):
                  gpu,
                  random_state,
                  binary_task:bool,
-                 extraction_mode = False):
+                 extraction_mode=False,
+                 oned=True):
         start_time = time()
         self.train = train
         self.device = device
         self.gpu = gpu
         self.random_state = random_state
+        self.oned = oned
         self.max_prot_seq_len = 1018
         self.max_smiles_seq_len = 256
         self.train_or_test = 'train' if train else 'test'
@@ -122,7 +124,10 @@ class SMILESProteinDataset(Dataset):
 
         if type(self.smiles_reprs[smiles]) == np.ndarray:
             self.smiles_reprs[smiles] = torch.tensor(self.smiles_reprs[smiles], dtype=torch.float32)  # numpy -> torch
-            self.smiles_reprs[smiles] = self.smiles_reprs[smiles].unsqueeze(0).unsqueeze(0)  # correct dimensions
+            if self.oned:
+                self.smiles_reprs[smiles] = self.smiles_reprs[smiles].unsqueeze(0).unsqueeze(0)  # correct dimensions
+            else:
+                self.smiles_reprs[smiles] = self.smiles_reprs[smiles].unsqueeze(0)
         
         smiles_emb = self.smiles_reprs[smiles].squeeze(dim=0) # NOTE: so you can have a one dimensional embedding
         

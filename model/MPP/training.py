@@ -50,6 +50,12 @@ def str2bool(v):
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--oned",
+        type=str2bool,
+        help='specifies if input is a 1d vector or matrix of (seq_len x emb)',
+        default=False
+    )
+    parser.add_argument(
         "--train_dir",
         type=str,
         required=True,
@@ -274,6 +280,7 @@ def trainer(gpu, args, device, split):
     logger.addHandler(fhandler)
     logger.info(f'split {split}')
     logger.info(args)
+    logger.info(f'device: {device}')
 
     if is_cuda(device):
         setup(gpu, args.world_size, str(args.port))
@@ -281,9 +288,8 @@ def trainer(gpu, args, device, split):
         torch.cuda.set_device(gpu)
 
     # getting the dimension of the smiles
-    #NOTE: This only takes 1D embeddings and ChemBERT is not a 1D embedding originally
-    dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[0]
-
+    dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[-1]
+    logger.info(f'dim size: {dim_size}')
     config = MM_TNConfig.from_dict({"s_hidden_size":dim_size, #NOTE: changed to accept other embeddings 1047, 724
         "p_hidden_size":1280,
         "hidden_size": 768,
@@ -300,24 +306,30 @@ def trainer(gpu, args, device, split):
 
     if os.path.exists(args.pretrained_model) and args.pretrained_model != "":
         logger.info(f"Loading model")
-        try:
-            state_dict = torch.load(args.pretrained_model)
-            new_model_state_dict = model.state_dict()
-            for key in new_model_state_dict.keys():
-                if key in state_dict.keys():
-                    try:
-                        new_model_state_dict[key].copy_(state_dict[key])
-                        logging.info("Updatete key: %s" % key)
-                    except:
-                        None
+        state_dict = torch.load(args.pretrained_model)
+        new_model_state_dict = model.state_dict()
+        
+        # making sure the state dicts work TODO: make this more robust
+        if list(state_dict.keys())[0].split('.')[0] == 'module':
+            for key, value in state_dict.items():
+                # so mismatched dimensions (embedding dim) do not get copied
+                try:
+                    new_model_state_dict[key.replace("module.", "")].copy_(value)
+                    logging.info("Updated key: %s" % key)
+                except:
+                    None
             model.load_state_dict(new_model_state_dict)
             logger.info("Successfully loaded pretrained model")
-        except:
-            new_state_dict = {}
-            for key, value in state_dict.items():
-                new_state_dict[key.replace("module.", "")] = value
-            model.load_state_dict(new_state_dict)
-            logger.info("Successfully loaded pretrained model (V2)")
+        else:
+            for key in new_model_state_dict.keys():
+                # so mismatched dimensions (embedding dim) do not get copied
+                try:
+                    new_model_state_dict[key].copy_(state_dict[key])
+                    logging.info("Updated key: %s" % key)
+                except:
+                    None
+            model.load_state_dict(new_model_state_dict)
+            logger.info("Successfully loaded pretrained model")
 
     else:
         logger.info("Model path is invalid, cannot load pretrained MM_TN model")
@@ -351,9 +363,10 @@ def trainer(gpu, args, device, split):
             train=True,
             device=device, 
             gpu=gpu,
-            random_state = int(epoch),
-            binary_task = args.binary_task,
-            extraction_mode = False) 
+            random_state=int(epoch),
+            binary_task=args.binary_task,
+            extraction_mode=False,
+            oned=args.oned)
 
         val_dataset = SMILESProteinDataset(
             data_path=os.path.join(args.train_dir, split, 'val_df.csv'),
@@ -361,9 +374,10 @@ def trainer(gpu, args, device, split):
             train=False, 
             device=device, 
             gpu=gpu,
-            random_state = int(epoch),
-            binary_task = args.binary_task,
-            extraction_mode = False)
+            random_state=int(epoch),
+            binary_task=args.binary_task,
+            extraction_mode=False,
+            oned=args.oned)
 
         trainsampler = DistributedSampler(train_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
         valsampler = DistributedSampler(val_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)

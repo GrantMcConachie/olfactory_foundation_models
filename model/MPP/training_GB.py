@@ -15,7 +15,7 @@ import pandas as pd
 import pickle as pkl
 import xgboost as xgb
 from hyperopt import fmin, tpe, hp, Trials, rand
-from sklearn.metrics import roc_auc_score, matthews_corrcoef, r2_score, mean_squared_error, matthews_corrcoef
+from sklearn.metrics import roc_auc_score, r2_score, mean_squared_error, matthews_corrcoef
 from lifelines.utils import concordance_index
 
 
@@ -50,6 +50,12 @@ def str2bool(v):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--oned",
+        type=str2bool,
+        help='specifies if input is a 1d vector or matrix of (seq_len x emb)',
+        default=False
+    )
     parser.add_argument(
         "--train_dir",
         type=str,
@@ -222,9 +228,8 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         torch.cuda.set_device(gpu)
     
     # getting smiles dimension
-    #NOTE: This only takes 1D embeddings and ChemBERT is not a 1D embedding originally
-    dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[0]
-
+    dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[-1]
+    logger.info(f'dim size: {dim_size}')
     config = MM_TNConfig.from_dict({"s_hidden_size":dim_size, # NOTE: changing to accept mordred embeddings
         "p_hidden_size":1280,
         "hidden_size": 768,
@@ -240,9 +245,10 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         train=True,
         device=device, 
         gpu=gpu,
-        random_state = 0,
-        binary_task = args.binary_task,
-        extraction_mode = True) 
+        random_state=0,
+        binary_task=args.binary_task,
+        extraction_mode=True,
+        oned=args.oned) 
 
     val_dataset = SMILESProteinDataset(
         data_path=os.path.join(args.train_dir, split, 'val_df.csv'),
@@ -250,9 +256,10 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         train=False, 
         device=device, 
         gpu=gpu,
-        random_state = 0,
-        binary_task = args.binary_task,
-        extraction_mode = True)
+        random_state=0,
+        binary_task=args.binary_task,
+        extraction_mode=True,
+        oned=args.oned)
         
     test_dataset = SMILESProteinDataset(
         data_path=os.path.join(args.train_dir, split, 'test_df.csv'),
@@ -260,9 +267,10 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         train=False, 
         device=device, 
         gpu=gpu,
-        random_state = 0,
-        binary_task = args.binary_task,
-        extraction_mode = True)
+        random_state=0,
+        binary_task=args.binary_task,
+        extraction_mode=True,
+        oned=args.oned)
 
     trainsampler = DistributedSampler(train_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
     valsampler = DistributedSampler(val_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
@@ -288,16 +296,13 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
 
     if os.path.exists(pretrained_model) and pretrained_model != "":
         logger.info(f"Loading model")
+        state_dict = torch.load(pretrained_model)
+        new_model_state_dict = model.state_dict()
         try:
-            state_dict = torch.load(pretrained_model)
-            new_model_state_dict = model.state_dict()
             for key in new_model_state_dict.keys():
-                if key in state_dict.keys():
-                    try:
-                        new_model_state_dict[key].copy_(state_dict[key])
-                        #logging.info("Updatete key: %s" % key)
-                    except:
-                        None
+                new_model_state_dict[key].copy_(state_dict[key])
+                logger.info("Updatete key: %s" % key)
+
             model.load_state_dict(new_model_state_dict)
             logger.info("Successfully loaded pretrained model")
         except:
@@ -308,7 +313,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
             logger.info("Successfully loaded pretrained model (V2)")
 
     else:
-        logger.info("Model path is invalid, cannot load pretrained Interbert model")
+        logger.info("Model path is invalid, cannot load pretrained MM_TN model")
     
 
     val_cls, val_esm1b, val_smiles, val_labels, _ = extract_repr(args, model, valloader, device)
@@ -330,7 +335,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
             if os.path.isdir(model_path):
                 bst.save_model(model_path)
             else:
-                os.mkdir(os.path.dirname(model_path))
+                os.makedirs(os.path.dirname(model_path))
                 bst.save_model(model_path)
 
         y_val_pred = bst.predict(dM_val)
@@ -456,7 +461,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     y_val_pred_all = get_predictions(param = trials.argmin, dM_train = dtrain, dM_val = dvalid)
     get_performance_metrics(pred = y_val_pred_all, true = val_labels)
     logger.info("Test set:")
-    y_test_pred_all = get_predictions(param = trials.argmin, dM_train = dtrain_val, dM_val = dtest, model_path=os.path.join(log_dir, 'xgboost', 'embs_only.pkl'))
+    y_test_pred_all = get_predictions(param = trials.argmin, dM_train = dtrain_val, dM_val = dtest, model_path=os.path.join(log_dir, 'xgboost', 'embs_only.json'))
     get_performance_metrics(pred = y_test_pred_all, true = test_labels)
     
     
@@ -490,7 +495,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     y_val_pred_all_cls = get_predictions(param = trials.argmin, dM_train = dtrain_all_cls, dM_val = dvalid_all_cls)
     get_performance_metrics(pred = y_val_pred_all_cls, true = val_labels)
     logger.info("Test set:")
-    y_test_pred_all_cls = get_predictions(param  = trials.argmin, dM_train = dtrain_val_all_cls, dM_val = dtest_all_cls, model_path=os.path.join(log_dir, 'xgboost', 'embs_and_cls.pkl'))
+    y_test_pred_all_cls = get_predictions(param  = trials.argmin, dM_train = dtrain_val_all_cls, dM_val = dtest_all_cls, model_path=os.path.join(log_dir, 'xgboost', 'embs_and_cls.json'))
     get_performance_metrics(pred = y_test_pred_all_cls, true = test_labels)
 
 
@@ -521,7 +526,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     y_val_pred_cls = get_predictions(param = trials.argmin, dM_train = dtrain_cls, dM_val = dvalid_cls)
     get_performance_metrics(pred = y_val_pred_cls, true = val_labels)
     logger.info("Test set:")
-    y_test_pred_cls = get_predictions(param = trials.argmin, dM_train = dtrain_val_cls, dM_val = dtest_cls, model_path=os.path.join(log_dir, 'xgboost', 'cls.pkl'))
+    y_test_pred_cls = get_predictions(param = trials.argmin, dM_train = dtrain_val_cls, dM_val = dtest_cls, model_path=os.path.join(log_dir, 'xgboost', 'cls.json'))
     get_performance_metrics(pred = y_test_pred_cls, true = test_labels)
 
 
@@ -544,8 +549,9 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
                     if mse < best_mse:
                         best_mse = mse
                         best_i, best_j, best_k = i, j, k
-        
-
+    
+    # saving best proportion
+    pkl.dump((best_i, best_j, best_k), open(os.path.join(log_dir, 'xgboost', 'val_proportion.pkl'), 'wb'))
 
     y_test_pred = best_i*y_test_pred_all_cls + best_j*y_test_pred_all + best_k*y_test_pred_cls
     logger.info("Three models combined:")
@@ -555,14 +561,13 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     
 
     ###Save model predictions:
-    save_pred_path = os.path.join(os.path.dirname(par_dir), 'predictions', split)
-    if save_pred_path != "":
-        try:
-            os.mkdir(save_pred_path)
-        except:
-            pass 
-        np.save(join(save_pred_path, "y_test_pred.npy"), y_test_pred)
-        np.save(join(save_pred_path, "test_indices.npy"), np.array(test_indices))
+    save_pred_path = os.path.join(os.path.dirname(par_dir), 'predictions', split, end_pth)
+    try:
+        os.makedirs(save_pred_path)
+    except:
+        logger.info('Predictions did not save!') 
+    np.save(join(save_pred_path, "y_test_pred.npy"), y_test_pred)
+    np.save(join(save_pred_path, "test_indices.npy"), np.array(test_indices))
 
     if args.world_size != -1:
         cleanup()
@@ -573,7 +578,7 @@ def check_if_transformer_trained(args):
     Automatically checks if a transformer was trained
     """
     par_dir = os.path.dirname(args.train_dir.replace('data', 'results'))
-    par_dir = os.path.join(par_dir, 'saved_models')
+    par_dir = os.path.join(par_dir, 'MPP', 'saved_models')
     end_pth, _ = os.path.splitext(os.path.basename(args.embed_path))
 
     for i in os.listdir(par_dir):

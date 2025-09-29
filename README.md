@@ -45,7 +45,6 @@ The MO and MPL models can be run with the following command.
 ```
 conda deactivate
 conda activate ofm
-pip install -e .
 python model/MO/molecule_model.py # MO model
 python model/MPL/combo_model.py # MPL model
 ```
@@ -58,6 +57,7 @@ This model is a little more nuanced to run as it is an adaptation of the ProSmit
 First you need to run the transformer model.
 ```
 conda activate ofm_MPP
+pip install -e .
 python model/MPP/training.py --train_dir data/CC/rand_splits --embed_path data/CC/embeddings/featurized_mols/MolT5.pkl --save_model_path results/CC/saved_models --binary_task False --log_name CC_MOLT5 --pretrained_model BindingDB/saved_model/pretraining_IC50_6gpus_bs144_1.5e-05_layers6.txt.pkl
 ```
 - --train_dir - is the dataset that you want to train the model on.

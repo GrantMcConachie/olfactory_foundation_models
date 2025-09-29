@@ -369,6 +369,22 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         del param["num_rounds"]
         del param["weight"]
         return(param, num_round)
+    
+    def set_param_values_V2(param, dtrain):
+        num_round = int(param["num_rounds"])
+        param["max_depth"] = int(depth_array[param["max_depth"]])
+        param["tree_method"] = "gpu_hist"
+        param["sampling_method"] = "gradient_based"
+        if not args.binary_task:
+            param['objective'] = 'reg:squarederror'
+            weights = None
+        else:
+            param['objective'] = 'binary:logistic'
+            weights = np.array([param["weight"] if y == 0 else 1.0 for y in dtrain.get_label()])
+            dtrain.set_weight(weights)
+        del param["num_rounds"]
+        del param["weight"]
+        return(param, num_round, dtrain)
 
     def set_param_values_all_cls(param):
         num_round = int(param["num_rounds"])
@@ -403,21 +419,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         return(param, num_round)
         
 
-    def set_param_values_V2(param, dtrain):
-        num_round = int(param["num_rounds"])
-        param["max_depth"] = int(depth_array[param["max_depth"]])
-        param["tree_method"] = "gpu_hist"
-        param["sampling_method"] = "gradient_based"
-        if not args.binary_task:
-            param['objective'] = 'reg:squarederror'
-            weights = None
-        else:
-            param['objective'] = 'binary:logistic'
-            weights = np.array([param["weight"] if y == 0 else 1.0 for y in dtrain.get_label()])
-            dtrain.set_weight(weights)
-        del param["num_rounds"]
-        del param["weight"]
-        return(param, num_round, dtrain)
+
 
 
         

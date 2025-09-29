@@ -1,5 +1,8 @@
 """
 Generates protein and molecule embeddings
+
+export HF_HOME=/projectnb/depaqlab/Grant/ProSmith_scc/downloads
+export TORCH_HOME=/projectnb/depaqlab/Grant/ProSmith_scc/downloads
 """
 
 import os
@@ -25,6 +28,7 @@ def get_mol_embedding_types():
     """
     Returns all embedding types in molfeat
     """
+    rand = [('rand', 'rand')]
     transformers = [
         ('trans', 'Roberta-Zinc480M-102M'),
         ('trans', 'GPT2-Zinc480M-87M'),
@@ -46,7 +50,7 @@ def get_mol_embedding_types():
     ]
     ecfp = [('ecfp', 'ecfp')]
 
-    return basic_fingerprints + ecfp + transformers + gnns
+    return rand + ecfp + basic_fingerprints + transformers + gnns
 
 
 def generate_mol_embeddings(dataset, emb_type):
@@ -87,6 +91,9 @@ def generate_mol_embeddings(dataset, emb_type):
             dtype=float
         )
         feats = featurizer(smiles)
+
+    elif emb_class == 'rand':
+        feats = np.random.normal(size=(len(smiles), 300))
 
     # save
     feat_dict = {}
@@ -180,6 +187,7 @@ def calculate_protein_embeddings(dataset, prot_emb_no=1000):
 
                 torch.save(result, output_file)
     merge_protein_emb_files(output_dir, outpath, fasta_file, prot_emb_no)
+    os.remove(fasta_file)
 
 
 def merge_protein_emb_files(output_dir, outpath, fasta_file, prot_emb_no):
@@ -218,17 +226,18 @@ def create_fasta_file(sequences, filename):
 
 
 def create_empty_path(path):
-	try:
-		os.mkdir(path)
-	except:
-		pass
+    try:
+        os.makedirs(path)
+    except:
+        pass
 
 
 if __name__ == '__main__':
     datasets = [
         # 'data/M2OR/raw/pairs_ec50.csv',
-        'data/HC/raw/hc_with_prot_seq_z.csv',
-        # 'data/CC/raw/CC_reformat_z.csv'
+        # 'data/HC/raw/hc_with_prot_seq_z.csv',
+        # 'data/CC/raw/CC_reformat_z.csv',
+        'inference/data/inference.csv'
     ]
 
     emb_types = get_mol_embedding_types()
@@ -238,5 +247,5 @@ if __name__ == '__main__':
         calculate_protein_embeddings(dataset)
 
         # generating molecular embeddings
-        # for emb_type in tqdm(emb_types, desc=f'{dataset}'):
-        #     generate_mol_embeddings(dataset, emb_type)
+        for emb_type in tqdm(emb_types, desc=f'{dataset}'):
+            generate_mol_embeddings(dataset, emb_type)

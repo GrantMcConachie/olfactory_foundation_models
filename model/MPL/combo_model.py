@@ -96,7 +96,7 @@ def cdhit_split(df, x, y, dataset):
     x_reorder = x[split_list]
     y_reorder = y[split_list]
 
-    return x_reorder, y_reorder
+    return x_reorder, y_reorder, df.iloc[split_list]
 
 
 def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
@@ -162,7 +162,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         rand_shuf_scores.append(score)
 
     # cdhit splits of the data
-    x, y = cdhit_split(df, x, y, dataset=dataset)
+    x, y, ordered_df = cdhit_split(df, x, y, dataset=dataset)
     cdhit_scores = []
     for i, (train_index, test_index) in enumerate(KFold(n_splits=5, shuffle=False).split(y)):
         clf = GridSearchCV(
@@ -173,7 +173,7 @@ def run_regression(dataset, mol_emb, prot_emb, regressor='r'):
         clf.fit(x[train_index], y[train_index])
         best_model = clf.best_estimator_
         best_model.fit(x[train_index], y[train_index])
-        save_splits(dataset, df, train_index, test_index, i, 'cdhit')
+        save_splits(dataset, ordered_df, train_index, test_index, i, 'cdhit')
 
         # using mcc if m2or
         if dataset == 'data/M2OR/raw/pairs_ec50.csv':
@@ -342,17 +342,16 @@ def main(dataset, regressor='r'):
                 regressor=regressor
             )
             emb_scores.append((emb_type, shuf_scores, cdhit_scores))
-        tabulate(emb_scores, dataset, regressor)
         plot_results(emb_scores, dataset)
+        tabulate(emb_scores, dataset, regressor)
         
-
     plt.show()
 
 
 if __name__ == '__main__':
     datasets = [
-        # 'data/M2OR/raw/pairs_ec50.csv',
+        'data/M2OR/raw/pairs_ec50.csv',
         # 'data/HC/raw/hc_with_prot_seq_z.csv',
-        'data/CC/raw/CC_reformat_z.csv'
+        # 'data/CC/raw/CC_reformat_z.csv'
     ]
     main(datasets)

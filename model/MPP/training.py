@@ -256,163 +256,170 @@ def evaluate(args, model, valloader, criterion, device, gpu):
 
 
 # Define the main function for training the model
-def trainer(gpu, args, device, split):
-    # Create a unique directory path for this iteration
-    end_path, _ = os.path.splitext(os.path.basename(args.embed_path))
-    log_dir = os.path.join(args.save_model_path, split, end_path)
-    os.makedirs(log_dir, exist_ok=True)  # Create directory if it doesn't exist
+def trainer(gpu, args, device, split_batches):
+    splits_for_this_gpu = split_batches[gpu]
+    device = torch.device(f'cuda:{gpu}' if torch.cuda.is_available() else "cpu")
+    print(f'Training loop for split {splits_for_this_gpu} on gpu {gpu}')
 
-    # Create the log file path inside the directory
-    log_filename = (f'{args.log_name}_log.txt')
-    log_path = os.path.join(log_dir, log_filename)
+    for split in splits_for_this_gpu:
+        if not os.path.exists(os.path.join(args.save_model_path, split)):
+            os.makedirs(os.path.join(args.save_model_path, split))
+        # Create a unique directory path for this iteration
+        end_path, _ = os.path.splitext(os.path.basename(args.embed_path))
+        log_dir = os.path.join(args.save_model_path, split, end_path)
+        os.makedirs(log_dir, exist_ok=True)  # Create directory if it doesn't exist
 
-    # Clear existing handlers
-    logger = logging.getLogger()
-    if logger.hasHandlers():
-        logger.handlers.clear()
+        # Create the log file path inside the directory
+        log_filename = (f'{args.log_name}_log.txt')
+        log_path = os.path.join(log_dir, log_filename)
 
-    logger.setLevel(logging.INFO)
+        # Clear existing handlers
+        logger = logging.getLogger()
+        if logger.hasHandlers():
+            logger.handlers.clear()
 
-    # File handler
-    fhandler = logging.FileHandler(filename=log_path, mode='w')
-    formatter = logging.Formatter('%(levelname)s:%(message)s')
-    fhandler.setFormatter(formatter)
-    logger.addHandler(fhandler)
-    logger.info(f'split {split}')
-    logger.info(args)
-    logger.info(f'device: {device}')
+        logger.setLevel(logging.INFO)
 
-    if is_cuda(device):
-        setup(gpu, args.world_size, str(args.port))
-        torch.manual_seed(0)
-        torch.cuda.set_device(gpu)
+        # File handler
+        fhandler = logging.FileHandler(filename=log_path, mode='w')
+        formatter = logging.Formatter('%(levelname)s:%(message)s')
+        fhandler.setFormatter(formatter)
+        logger.addHandler(fhandler)
+        logger.info(f'split {split}')
+        logger.info(args)
+        logger.info(f'device: {device}')
 
-    # getting the dimension of the smiles
-    dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[-1]
-    logger.info(f'dim size: {dim_size}')
-    config = MM_TNConfig.from_dict({"s_hidden_size":dim_size, #NOTE: changed to accept other embeddings 1047, 724
-        "p_hidden_size":1280,
-        "hidden_size": 768,
-        "max_seq_len":1276,
-        "num_hidden_layers" : args.num_hidden_layers,
-        "binary_task" : args.binary_task})
+        if is_cuda(device):
+            setup(gpu, args.world_size, str(args.port))
+            torch.manual_seed(0)
+            torch.cuda.set_device(gpu)
 
-    logger.info(f"Loading model")
-    model = MM_TN(config)
-    
-    if is_cuda(device):
-        model = model.to(gpu)
-        model = DDP(model, device_ids=[gpu])
+        # getting the dimension of the smiles
+        dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[-1]
+        logger.info(f'dim size: {dim_size}')
+        config = MM_TNConfig.from_dict({"s_hidden_size":dim_size, #NOTE: changed to accept other embeddings 1047, 724
+            "p_hidden_size":1280,
+            "hidden_size": 768,
+            "max_seq_len":1276,
+            "num_hidden_layers" : args.num_hidden_layers,
+            "binary_task" : args.binary_task})
 
-    if os.path.exists(args.pretrained_model) and args.pretrained_model != "":
         logger.info(f"Loading model")
-        state_dict = torch.load(args.pretrained_model)
-        new_model_state_dict = model.state_dict()
+        model = MM_TN(config)
         
-        # making sure the state dicts work TODO: make this more robust
-        if list(state_dict.keys())[0].split('.')[0] == 'module':
-            for key, value in state_dict.items():
-                # so mismatched dimensions (embedding dim) do not get copied
-                try:
-                    new_model_state_dict[key.replace("module.", "")].copy_(value)
-                    logging.info("Updated key: %s" % key)
-                except:
-                    None
-            model.load_state_dict(new_model_state_dict)
-            logger.info("Successfully loaded pretrained model")
+        if is_cuda(device):
+            model = model.to(gpu)
+            model = DDP(model, device_ids=[gpu])
+
+        if os.path.exists(args.pretrained_model) and args.pretrained_model != "":
+            logger.info(f"Loading model")
+            state_dict = torch.load(args.pretrained_model)
+            new_model_state_dict = model.state_dict()
+            
+            # making sure the state dicts work TODO: make this more robust
+            if list(state_dict.keys())[0].split('.')[0] == 'module':
+                for key, value in state_dict.items():
+                    # so mismatched dimensions (embedding dim) do not get copied
+                    try:
+                        new_model_state_dict[key.replace("module.", "")].copy_(value)
+                        logging.info("Updated key: %s" % key)
+                    except:
+                        None
+                model.load_state_dict(new_model_state_dict)
+                logger.info("Successfully loaded pretrained model")
+            else:
+                for key in new_model_state_dict.keys():
+                    # so mismatched dimensions (embedding dim) do not get copied
+                    try:
+                        new_model_state_dict[key].copy_(state_dict[key])
+                        logging.info("Updated key: %s" % key)
+                    except:
+                        None
+                model.load_state_dict(new_model_state_dict)
+                logger.info("Successfully loaded pretrained model")
+
         else:
-            for key in new_model_state_dict.keys():
-                # so mismatched dimensions (embedding dim) do not get copied
-                try:
-                    new_model_state_dict[key].copy_(state_dict[key])
-                    logging.info("Updated key: %s" % key)
-                except:
-                    None
-            model.load_state_dict(new_model_state_dict)
-            logger.info("Successfully loaded pretrained model")
-
-    else:
-        logger.info("Model path is invalid, cannot load pretrained MM_TN model")
+            logger.info("Model path is invalid, cannot load pretrained MM_TN model")
 
 
-    # criterion = nn.MSELoss() #commented out hard coded loss func that doesnt allow for binar T/F values to change loss
+        # criterion = nn.MSELoss() #commented out hard coded loss func that doesnt allow for binar T/F values to change loss
 
-    # added if/else statement to actually use dif loss funcs:
-    if args.binary_task:
-        logger.info(f'arg for binary_task: {args.binary_task}')
-        criterion = nn.BCELoss()
-        logger.info(f"using loss function: {criterion.__class__.__name__}")
-    else:
-        logger.info(f'arg for binary_task: {args.binary_task}')
-        criterion = nn.MSELoss()
-        logger.info(f"using loss function: {criterion.__class__.__name__}")
-    #end of add
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+        # added if/else statement to actually use dif loss funcs:
+        if args.binary_task:
+            logger.info(f'arg for binary_task: {args.binary_task}')
+            criterion = nn.BCELoss()
+            logger.info(f"using loss function: {criterion.__class__.__name__}")
+        else:
+            logger.info(f'arg for binary_task: {args.binary_task}')
+            criterion = nn.MSELoss()
+            logger.info(f"using loss function: {criterion.__class__.__name__}")
+        #end of add
+        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    # train the model
-    logger.info(f"Start training")
-    
-    best_val_loss = float('inf')
-    
-    for epoch in range(args.num_train_epochs):
-
-        logger.info(f"Loading dataset to {device}:{gpu}")
-        train_dataset = SMILESProteinDataset(
-            data_path=os.path.join(args.train_dir, split, 'train_df.csv'),
-            embed_dir = args.embed_path,
-            train=True,
-            device=device, 
-            gpu=gpu,
-            random_state=int(epoch),
-            binary_task=args.binary_task,
-            extraction_mode=False,
-            oned=args.oned)
-
-        val_dataset = SMILESProteinDataset(
-            data_path=os.path.join(args.train_dir, split, 'val_df.csv'),
-            embed_dir = args.embed_path,
-            train=False, 
-            device=device, 
-            gpu=gpu,
-            random_state=int(epoch),
-            binary_task=args.binary_task,
-            extraction_mode=False,
-            oned=args.oned)
-
-        trainsampler = DistributedSampler(train_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
-        valsampler = DistributedSampler(val_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
-
-
-        logger.info(f"Loading dataloader")
-        trainloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1, sampler=trainsampler)
-        valloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1, sampler=valsampler)
+        # train the model
+        logger.info(f"Start training")
         
-
-        start_time = time.time()
-        logger.info(f"Training started for epoch: {epoch+1}")
-        train_loss = train(args, model, trainloader, optimizer, criterion, device, gpu, epoch)
-        logger.info(f"Training complete")
-
-        del trainsampler
-        del trainloader
-        del train_dataset 
-
-        logger.info(f"Val performance:")
-        val_loss, val_mse = evaluate(args, model, valloader, criterion, device, gpu)
-        logger.info(f"Evaluation complete")
-        logger.info('-' * 80)
-        logger.info(f'| Device id: {gpu} | End of epoch: {(epoch+1)} | '
-                     f'Time taken: {(time.time()-start_time):5.2f}s |\n| Val CE loss: {val_loss:2.5f} | '
-                     f'Val MSE {val_mse:2.5f} | Train Loss {train_loss:2.5f} |')
-        logger.info('-' * 80)
+        best_val_loss = float('inf')
         
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            if is_main_process():
-                torch.save(model.state_dict(), os.path.join(log_dir, setting + '.pkl'))
+        for epoch in range(args.num_train_epochs):
 
-    if args.world_size != -1:
-        cleanup()
+            logger.info(f"Loading dataset to {device}:{gpu}")
+            train_dataset = SMILESProteinDataset(
+                data_path=os.path.join(args.train_dir, split, 'train_df.csv'),
+                embed_dir = args.embed_path,
+                train=True,
+                device=device, 
+                gpu=gpu,
+                random_state=int(epoch),
+                binary_task=args.binary_task,
+                extraction_mode=False,
+                oned=args.oned)
+
+            val_dataset = SMILESProteinDataset(
+                data_path=os.path.join(args.train_dir, split, 'val_df.csv'),
+                embed_dir = args.embed_path,
+                train=False, 
+                device=device, 
+                gpu=gpu,
+                random_state=int(epoch),
+                binary_task=args.binary_task,
+                extraction_mode=False,
+                oned=args.oned)
+
+            trainsampler = DistributedSampler(train_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
+            valsampler = DistributedSampler(val_dataset, shuffle = False, num_replicas = args.world_size, rank = gpu, drop_last = True)
+
+
+            logger.info(f"Loading dataloader")
+            trainloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1, sampler=trainsampler)
+            valloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1, sampler=valsampler)
+            
+
+            start_time = time.time()
+            logger.info(f"Training started for epoch: {epoch+1}")
+            train_loss = train(args, model, trainloader, optimizer, criterion, device, gpu, epoch)
+            logger.info(f"Training complete")
+
+            del trainsampler
+            del trainloader
+            del train_dataset 
+
+            logger.info(f"Val performance:")
+            val_loss, val_mse = evaluate(args, model, valloader, criterion, device, gpu)
+            logger.info(f"Evaluation complete")
+            logger.info('-' * 80)
+            logger.info(f'| Device id: {gpu} | End of epoch: {(epoch+1)} | '
+                        f'Time taken: {(time.time()-start_time):5.2f}s |\n| Val CE loss: {val_loss:2.5f} | '
+                        f'Val MSE {val_mse:2.5f} | Train Loss {train_loss:2.5f} |')
+            logger.info('-' * 80)
+            
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                if is_main_process():
+                    torch.save(model.state_dict(), os.path.join(log_dir, setting + '.pkl'))
+
+        if args.world_size != -1:
+            cleanup()
 
 
 if __name__ == '__main__':
@@ -429,16 +436,16 @@ if __name__ == '__main__':
         device = torch.device('cpu')
         args.world_size = -1
   
-    # Loop through folds
-    for split in os.listdir(args.train_dir):
+    # set up splits in parallel
+    splits = sorted(os.listdir(args.train_dir))
+    split_batches = [[] for _ in range(gpus)]
+    for i, split in enumerate(splits):
+        split_batches[i % n_gpus].append(split)
 
-        if not os.path.exists(os.path.join(args.save_model_path, split)):
-            os.makedirs(os.path.join(args.save_model_path, split))
-
-        try:
-            if torch.cuda.is_available():
-                mp.spawn(trainer, nprocs=args.world_size, args=(args, device, split))
-            else:
-                trainer(0, args, device, split)
-        except Exception as e:
-            print(e)
+    try:
+        if torch.cuda.is_available():
+            mp.spawn(trainer, nprocs=args.world_size, args=(args, device, split_batches))
+        else:
+            trainer(0, args, device, split_batches)
+    except Exception as e:
+        print(e)

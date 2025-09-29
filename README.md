@@ -1,5 +1,9 @@
 # Olfactory Foundation Models
-This is a repository for the paper Multimodal Biochemical Foundation Models Improve Odorant Receptor Pair Prediction (McConachie et. al. 2025)
+This is a repository for the benchmarking section in [this](https://openreview.net/forum?id=BUUfUcIcfE&referrer=%5BAuthor%20Console%5D(%2Fgroup%3Fid%3DICLR.cc%2F2026%2FConference%2FAuthors%23your-submissions)) paper. The LORAX repo can be found [here](https://github.com/GrantMcConachie/olf_chemical_embs).
+
+![benchmarking models overview](bench_model_sup_fig.png)
+
+NOTE: MPL <-> MP and MPP <-> ProSmith are used interchangably.
 
 ## Install
 ### Environments
@@ -8,12 +12,6 @@ There are two separate environments to run models: one for preprocessing, MO, an
 ```
 conda env create -f ofm.yml  # preprocessing, MO, and MPL models
 conda env create -f ofm_MPP.yml  # MPP model
-```
-
-There is an additional environment for generating CD-HIT splits below. This environment is not required to setup if data is downloaded from the zenodo link below.
-
-```
-TODO
 ```
 
 ### Datasets
@@ -28,13 +26,6 @@ All embeddings are already provided in the data/ folder, but if you would like t
 conda activate ofm
 pip install -e .
 python preprocess/generate_embeddings.py
-```
-
-## How to generate CD-HIT splits
-These splits are also already provided in the data/ folder, but if you would like to regenerate them you can run the following command.
-
-```
-TODO
 ```
 
 ## Running the models

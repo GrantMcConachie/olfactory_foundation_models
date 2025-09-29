@@ -15,7 +15,16 @@ import pandas as pd
 import pickle as pkl
 import xgboost as xgb
 from hyperopt import fmin, tpe, hp, Trials, rand
-from sklearn.metrics import roc_auc_score, r2_score, mean_squared_error, matthews_corrcoef
+from sklearn.metrics import (
+    roc_auc_score,
+    matthews_corrcoef,
+    r2_score,
+    mean_squared_error,
+    average_precision_score,
+    precision_score,
+    recall_score,
+    f1_score
+)
 from lifelines.utils import concordance_index
 
 
@@ -147,12 +156,26 @@ def extract_repr(args, model, dataloader, device):
 
     if is_cuda(device):
         model = model.to(device)
+
+    if "M2OR_full" in args.train_dir:
+        criterion = M2ORWeightedCrossEntropyLoss(
+            args.train_dir
+        )
+        weights = []
+
+    else:
+        weights = None
     
     with torch.no_grad():
         for step, batch in enumerate(dataloader):
             # move batch to device
-            batch = [r.to(device) for r in batch]
-            smiles_emb, smiles_attn, protein_emb, protein_attn, labels, indices = batch
+            smiles_emb, smiles_attn, protein_emb, protein_attn, labels, indices, prots, smis = batch
+            smiles_emb.to(device)
+            smiles_attn.to(device)
+            protein_emb.to(device)
+            protein_attn.to(device)
+            labels.to(device)
+            indices.to(device)
             _, cls_repr = model(smiles_emb=smiles_emb, 
                                                     smiles_attn=smiles_attn, 
                                                     protein_emb=protein_emb,
@@ -167,6 +190,17 @@ def extract_repr(args, model, dataloader, device):
             smiles = smiles_emb[0][:smiles_attn].mean(0).cpu().detach().numpy()
             esm1b = protein_emb[0][:protein_attn].mean(0).cpu().detach().numpy()
             cls_rep = cls_repr[0].cpu().detach().numpy()
+
+            if "M2OR_full" in args.train_dir:
+                for i in range(len(prots)):
+                    # assign weights to the data if using the m2or dataset
+                    w_quality = criterion.data_quality_w[(smis[i], prots[i])]
+                    w_class = criterion.pos_class_weight if labels[i] else criterion.neg_class_weight
+                    w_pair = criterion.pair_imbalance_weight(smis[i], prots[i])
+
+                    # get total weighting append to weights
+                    w_tot = w_quality * w_class * w_pair
+                    weights.append(w_tot)
 
             if step ==0:
                 cls_repr_all = cls_rep.reshape(1,-1)
@@ -185,7 +219,11 @@ def extract_repr(args, model, dataloader, device):
     # added this logging info step so you know if somethings getting stuck:
     logging.info("All batches processed. Representation extraction complete")
     #end add
-    return cls_repr_all, esm1b_repr_all, smiles_repr_all, labels_all.cpu().detach().numpy(), orginal_indices
+
+    if "M2OR_full" in args.train_dir:
+        weights = torch.tensor(weights, dtype=torch.float, device='cpu')
+
+    return cls_repr_all, esm1b_repr_all, smiles_repr_all, labels_all.cpu().detach().numpy(), orginal_indices, weights
 
 
 
@@ -228,7 +266,11 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         torch.cuda.set_device(gpu)
     
     # getting smiles dimension
-    dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[-1]
+    if args.oned:
+        dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[0]
+    else:
+        dim_size = list(pkl.load(open(args.embed_path, 'rb')).values())[0].shape[1]
+
     logger.info(f'dim size: {dim_size}')
     config = MM_TNConfig.from_dict({"s_hidden_size":dim_size, # NOTE: changing to accept mordred embeddings
         "p_hidden_size":1280,
@@ -296,7 +338,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
 
     if os.path.exists(pretrained_model) and pretrained_model != "":
         logger.info(f"Loading model")
-        state_dict = torch.load(pretrained_model)
+        state_dict = torch.load(pretrained_model, map_location=device)
         new_model_state_dict = model.state_dict()
         try:
             for key in new_model_state_dict.keys():
@@ -316,9 +358,9 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
         logger.info("Model path is invalid, cannot load pretrained MM_TN model")
     
 
-    val_cls, val_esm1b, val_smiles, val_labels, _ = extract_repr(args, model, valloader, device)
-    test_cls, test_esm1b, test_smiles, test_labels, test_indices = extract_repr(args, model, testloader, device)
-    train_cls, train_esm1b, train_smiles, train_labels, _ = extract_repr(args, model, trainloader, device)
+    val_cls, val_esm1b, val_smiles, val_labels, _, weights_val = extract_repr(args, model, valloader, device)
+    test_cls, test_esm1b, test_smiles, test_labels, test_indices, weights_test = extract_repr(args, model, testloader, device)
+    train_cls, train_esm1b, train_smiles, train_labels, _, weights_train = extract_repr(args, model, trainloader, device)
 
     logger.info(str(len(test_labels)))
     
@@ -346,7 +388,11 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
             acc = np.mean(np.round(pred) == np.array(true))
             roc_auc = roc_auc_score(np.array(true), pred)
             mcc = matthews_corrcoef(np.array(true),np.round(pred))
-            logger.info("accuracy: %s,ROC AUC: %s, MCC: %s" % (acc, roc_auc, mcc))
+            ave_p = average_precision_score(np.array(true), np.round(pred))
+            prec = precision_score(np.array(true), np.round(pred))
+            rec = recall_score(np.array(true), np.round(pred))
+            f_score = f1_score(np.array(true), np.round(pred))
+            logger.info("accuracy: %s,ROC AUC: %s, MCC: %s, AveP: %s, Prec: %s, rec: %s, f1: %s" % (acc, roc_auc, mcc, ave_p, prec, rec, f_score))
         else:
             mse = mean_squared_error(true, pred)
             CI = concordance_index(true, pred)
@@ -440,12 +486,12 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     test_X_all = np.concatenate([test_esm1b, test_smiles], axis = 1)
     val_X_all = np.concatenate([val_esm1b, val_smiles], axis = 1)
 
-    dtrain = xgb.DMatrix(np.array(train_X_all), label = np.array(train_labels).astype(float))
-    dtest = xgb.DMatrix(np.array(test_X_all), label = np.array(test_labels).astype(float))
-    dvalid = xgb.DMatrix(np.array(val_X_all), label = np.array(val_labels).astype(float))
+    dtrain = xgb.DMatrix(np.array(train_X_all), label = np.array(train_labels).astype(float), weight=weights_train)
+    dtest = xgb.DMatrix(np.array(test_X_all), label = np.array(test_labels).astype(float), weight=weights_test)
+    dvalid = xgb.DMatrix(np.array(val_X_all), label = np.array(val_labels).astype(float), weight=weights_val)
     dtrain_val = xgb.DMatrix(np.concatenate([np.array(train_X_all), np.array(val_X_all)], axis = 0),
-                                    label = np.concatenate([np.array(train_labels).astype(float),np.array(val_labels).astype(float)], axis = 0))
-    
+                                    label = np.concatenate([np.array(train_labels).astype(float),np.array(val_labels).astype(float)], axis = 0), weight=np.concatenate([weights_train, weights_val]))
+   
     def train_xgboost_model_all(param):
         param, num_round = set_param_values(param)
         #Training:
@@ -463,7 +509,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     y_val_pred_all = get_predictions(param = trials.argmin, dM_train = dtrain, dM_val = dvalid)
     get_performance_metrics(pred = y_val_pred_all, true = val_labels)
     logger.info("Test set:")
-    y_test_pred_all = get_predictions(param = trials.argmin, dM_train = dtrain_val, dM_val = dtest, model_path=os.path.join(log_dir, 'xgboost', 'embs_only.json'))
+    y_test_pred_all = get_predictions(param = trials.argmin, dM_train = dtrain_val, dM_val = dtest, model_path=os.path.join(log_dir, 'xgboost', 'embs_only.model'))
     get_performance_metrics(pred = y_test_pred_all, true = test_labels)
     
     
@@ -472,11 +518,11 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     test_X_all_cls = np.concatenate([np.concatenate([test_esm1b, test_smiles], axis = 1), test_cls], axis=1)
     val_X_all_cls = np.concatenate([np.concatenate([val_esm1b, val_smiles], axis = 1), val_cls], axis=1)
 
-    dtrain_all_cls = xgb.DMatrix(np.array(train_X_all_cls), label = np.array(train_labels).astype(float))
-    dtest_all_cls = xgb.DMatrix(np.array(test_X_all_cls), label = np.array(test_labels).astype(float))
-    dvalid_all_cls = xgb.DMatrix(np.array(val_X_all_cls), label = np.array(val_labels).astype(float))
+    dtrain_all_cls = xgb.DMatrix(np.array(train_X_all_cls), label = np.array(train_labels).astype(float), weight=weights_train)
+    dtest_all_cls = xgb.DMatrix(np.array(test_X_all_cls), label = np.array(test_labels).astype(float), weight=weights_test)
+    dvalid_all_cls = xgb.DMatrix(np.array(val_X_all_cls), label = np.array(val_labels).astype(float), weight=weights_val)
     dtrain_val_all_cls = xgb.DMatrix(np.concatenate([np.array(train_X_all_cls), np.array(val_X_all_cls)], axis = 0),
-                                label = np.concatenate([np.array(train_labels).astype(float),np.array(val_labels).astype(float)], axis = 0))
+                                label = np.concatenate([np.array(train_labels).astype(float),np.array(val_labels).astype(float)], axis = 0), weight=np.concatenate([weights_train, weights_val]))
     
     
     def train_xgboost_model_all_cls(param):
@@ -497,17 +543,17 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     y_val_pred_all_cls = get_predictions(param = trials.argmin, dM_train = dtrain_all_cls, dM_val = dvalid_all_cls)
     get_performance_metrics(pred = y_val_pred_all_cls, true = val_labels)
     logger.info("Test set:")
-    y_test_pred_all_cls = get_predictions(param  = trials.argmin, dM_train = dtrain_val_all_cls, dM_val = dtest_all_cls, model_path=os.path.join(log_dir, 'xgboost', 'embs_and_cls.json'))
+    y_test_pred_all_cls = get_predictions(param  = trials.argmin, dM_train = dtrain_val_all_cls, dM_val = dtest_all_cls, model_path=os.path.join(log_dir, 'xgboost', 'embs_and_cls.model'))
     get_performance_metrics(pred = y_test_pred_all_cls, true = test_labels)
 
 
 
     ############# cls token
-    dtrain_cls = xgb.DMatrix(np.array(train_cls), label = np.array(train_labels).astype(float))
-    dvalid_cls = xgb.DMatrix(np.array(val_cls), label = np.array(val_labels).astype(float))
-    dtest_cls = xgb.DMatrix(np.array(test_cls), label = np.array(test_labels).astype(float))
+    dtrain_cls = xgb.DMatrix(np.array(train_cls), label = np.array(train_labels).astype(float), weight=weights_train)
+    dvalid_cls = xgb.DMatrix(np.array(val_cls), label = np.array(val_labels).astype(float), weight=weights_val)
+    dtest_cls = xgb.DMatrix(np.array(test_cls), label = np.array(test_labels).astype(float), weight=weights_test)
     dtrain_val_cls = xgb.DMatrix(np.concatenate([np.array(train_cls), np.array(val_cls)], axis = 0),
-                                label = np.concatenate([np.array(train_labels).astype(float),np.array(val_labels).astype(float)], axis = 0))
+                                label = np.concatenate([np.array(train_labels).astype(float),np.array(val_labels).astype(float)], axis = 0), weight=np.concatenate([weights_train, weights_val]))
 
     
     def train_xgboost_model_cls(param):
@@ -528,7 +574,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
     y_val_pred_cls = get_predictions(param = trials.argmin, dM_train = dtrain_cls, dM_val = dvalid_cls)
     get_performance_metrics(pred = y_val_pred_cls, true = val_labels)
     logger.info("Test set:")
-    y_test_pred_cls = get_predictions(param = trials.argmin, dM_train = dtrain_val_cls, dM_val = dtest_cls, model_path=os.path.join(log_dir, 'xgboost', 'cls.json'))
+    y_test_pred_cls = get_predictions(param = trials.argmin, dM_train = dtrain_val_cls, dM_val = dtest_cls, model_path=os.path.join(log_dir, 'xgboost', 'cls.model'))
     get_performance_metrics(pred = y_test_pred_cls, true = test_labels)
 
 
@@ -579,15 +625,27 @@ def check_if_transformer_trained(args):
     """
     Automatically checks if a transformer was trained
     """
+    # make sure only checking certain splits
+    if args.train_dir.split('/')[-1] == 'rand_splits':
+        split_type = 'rand_split'
+    elif args.train_dir.split('/')[-1] == 'cdhit_splits':
+        split_type = 'cdhit_split'
+    elif args.train_dir.split('/')[-1] == 'scaf_splits':
+        split_type = 'scaf_split'
+    else:
+        raise Exception(f'Choose appropriate split')
+
     par_dir = os.path.dirname(args.train_dir.replace('data', 'results'))
     par_dir = os.path.join(par_dir, 'MPP', 'saved_models')
     end_pth, _ = os.path.splitext(os.path.basename(args.embed_path))
 
     for i in os.listdir(par_dir):
-        if os.path.isdir(os.path.join(par_dir, i, end_pth)):
-            pass
-        else:
-            raise Exception(f'Train transformer on embedding first')
+        _dir = os.path.join(par_dir, i, end_pth)
+        if split_type in _dir:
+            if os.path.isdir(_dir):
+                pass
+            else:
+                raise Exception(f'Train transformer on embedding first')
         
     return par_dir, end_pth
 

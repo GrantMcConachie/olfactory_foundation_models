@@ -4,6 +4,7 @@ batch_GB.sh
 batch_transformer.sh
 data/
 inference/
+batch_inference.sh
 
 # data
 BindingDB/

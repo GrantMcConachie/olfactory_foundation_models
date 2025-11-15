@@ -1,5 +1,5 @@
 # Olfactory Foundation Models
-This is a repository for the benchmarking section in [this](https://openreview.net/forum?id=BUUfUcIcfE&referrer=%5BAuthor%20Console%5D(%2Fgroup%3Fid%3DICLR.cc%2F2026%2FConference%2FAuthors%23your-submissions)) paper. The LORAX repo can be found [here](https://github.com/GrantMcConachie/olf_chemical_embs).
+This is a repository for the benchmarking section in [this](https://openreview.net/forum?id=BUUfUcIcfE&referrer=%5BAuthor%20Console%5D(%2Fgroup%3Fid%3DICLR.cc%2F2026%2FConference%2FAuthors%23your-submissions)) paper.
 
 ![benchmarking models overview](bench_model_sup_fig.png)
 

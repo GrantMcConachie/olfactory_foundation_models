@@ -1,8 +1,5 @@
 """
 Generates protein and molecule embeddings
-
-export HF_HOME=/projectnb/depaqlab/Grant/ProSmith_scc/downloads
-export TORCH_HOME=/projectnb/depaqlab/Grant/ProSmith_scc/downloads
 """
 
 import os
@@ -237,7 +234,8 @@ if __name__ == '__main__':
         # 'data/M2OR/raw/pairs_ec50.csv',
         # 'data/HC/raw/hc_with_prot_seq_z.csv',
         # 'data/CC/raw/CC_reformat_z.csv',
-        'inference/data/inference.csv'
+        'inference/data/known_rec_inference.csv',
+        # 'data/M2OR_full/raw/full_data.csv'
     ]
 
     emb_types = get_mol_embedding_types()

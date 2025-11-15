@@ -110,7 +110,6 @@ class Bert(nn.Module):
             hidden_repr = x[0,:,:]
             
         # NOTE: This is where everything is added into the cls token
-        # torch.save(x, '/projectnb/depaqlab/Grant/ProSmith_scc/hidden_repr.pt')
         x = x[0,:,:]
 
         x = x.reshape(-1, self.hidden_size)

@@ -377,7 +377,7 @@ def trainer(gpu, args, device, par_dir, split, end_pth):
             if os.path.isdir(model_path):
                 bst.save_model(model_path)
             else:
-                os.makedirs(os.path.dirname(model_path))
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
                 bst.save_model(model_path)
 
         y_val_pred = bst.predict(dM_val)

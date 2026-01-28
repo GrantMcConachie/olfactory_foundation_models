@@ -1,5 +1,5 @@
 # Olfactory Foundation Models
-This is a repository for the benchmarking section in [this](https://openreview.net/forum?id=BUUfUcIcfE&referrer=%5BAuthor%20Console%5D(%2Fgroup%3Fid%3DICLR.cc%2F2026%2FConference%2FAuthors%23your-submissions)) paper.
+This is a repository for the benchmarking section in [this](https://openreview.net/forum?id=BUUfUcIcfE) paper. The LORAX repo can be found [here](https://github.com/GrantMcConachie/olf_chemical_embs).
 
 ![benchmarking models overview](bench_model_sup_fig.png)
 
@@ -15,7 +15,7 @@ conda env create -f ofm_MPP.yml  # MPP model
 ```
 
 ### Datasets
-The datasets used in this paper can be downloaded [here](https://limewire.com/d/XoELD#31hJF5pEIE).
+The datasets used in this paper can be downloaded [here](https://github.com/GrantMcConachie/olfactory_foundation_models).
 
 These files also contain pre-generated embeddings, the splits used, and a pretrained MPP model. Please unzip and put the `data/` and `BindingDB/` folders in the top level directory.
 

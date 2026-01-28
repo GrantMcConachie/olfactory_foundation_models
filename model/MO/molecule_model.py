@@ -168,6 +168,11 @@ def run_lr(dataset, embs, regressor='r'):
                 for x in xs
             ])
 
+            # ordering df wrt scaffold splits
+            scaffold_groups = scaffoldsplitter.generate_scaffolds(dataset_)  # or however you use this
+            scaffolded_ids = [id for group in scaffold_groups for id in group]
+            scaffold_df = df.loc[scaffolded_ids].reset_index(drop=True)
+
             for i, (train_index, test_index) in enumerate(ss.split(scaf_out)):
                 clf = GridSearchCV(
                     reg,
@@ -179,6 +184,7 @@ def run_lr(dataset, embs, regressor='r'):
                 best_model.fit(scaf_emb[train_index], scaf_out[train_index])
                 r2 = best_model.score(scaf_emb[test_index], scaf_out[test_index])
                 scaf_shuf_scores.append(r2)
+                # save_splits(dataset, scaffold_df, train_index, test_index, i, 'scaf')
 
         scores_per_protein.append(
             (
